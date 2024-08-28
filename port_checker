@@ -1,9 +1,41 @@
 #!/bin/bash
 
-# Check if no arguments are provided
-if [ $# -eq 0 ]; then
-  echo "Usage: $(basename $0) <hostname_or_ip> [ports]"
-  echo "Example: $(basename $0) 192.168.1.1 [optional_ports]"
+# Function to handle cleanup on SIGINT (Ctrl + C)
+cleanup() {
+  echo -e "\nScan interrupted. Exiting..."
+  exit 1
+}
+
+# Trap SIGINT (Ctrl + C) and call the cleanup function
+trap cleanup SIGINT
+
+# Initialize variables
+output_file=""
+
+# Parse command line options
+while getopts ":o:" opt; do
+    case $opt in
+        o)
+            output_file="$OPTARG"
+            ;;
+        \?)
+            echo "Invalid option: -$OPTARG" >&2
+            exit 1
+            ;;
+        :)
+            echo "Option -$OPTARG requires an argument." >&2
+            exit 1
+            ;;
+    esac
+done
+
+# Shift positional parameters to remove options processed by getopts
+shift $((OPTIND -1))
+
+# Check if at least one argument (hostname or IP) is provided
+if [ $# -lt 1 ]; then
+  echo "Usage: $(basename $0) [-o output_file] <hostname_or_ip> [ports]"
+  echo "Example: $(basename $0) -o scan_results.txt 192.168.1.1 [optional_ports]"
   exit 1
 fi
 
@@ -12,23 +44,34 @@ shift # Shift the positional parameters to remove the hostname/ip from the list
 
 # If specific ports are provided, use them. Otherwise, use the entire range 1-65535.
 PORTS=${@:-$(seq 1 65535)}
-TOTAL_PORTS=$(echo $PORTS | wc -w)
+
+# Count the total number of ports
+TOTAL_PORTS=$(echo "$PORTS" | tr ' ' '\n' | wc -l)
 
 # Default sleep interval (in seconds)
-#SLEEP_INTERVAL=0.5
+SLEEP_INTERVAL=0.5
 
 # Initialize progress counter
 COUNTER=0
+
+# Define output stream if output_file is specified
+if [ -n "$output_file" ]; then
+  # Overwrite the file if it exists
+  exec > >(tee "$output_file") 2>&1
+else
+  # Default to terminal output
+  exec > /dev/tty 2>&1
+fi
 
 # Loop through each port and test the connection
 for PORT in $PORTS; do
   COUNTER=$((COUNTER + 1))
   
   # Display progress
-  echo -ne "Scanning port $PORT ($COUNTER/$TOTAL_PORTS)\r"
+  printf "Scanning port %d (%d/%d)\r" "$PORT" "$COUNTER" "$TOTAL_PORTS"
   
   # Use netcat to test the port
-  nc -zv -w 2 $HOST $PORT &> /dev/null
+  nc -zv -w 2 "$HOST" "$PORT" &> /dev/null
   
   # Check the exit status of netcat
   if [ $? -eq 0 ]; then
@@ -36,7 +79,7 @@ for PORT in $PORTS; do
   fi
   
   # Sleep for the default interval
-  #sleep $SLEEP_INTERVAL
+  sleep $SLEEP_INTERVAL
 done
 
 # Ensure the last progress line is cleared after completion
