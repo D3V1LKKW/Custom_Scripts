@@ -1,0 +1,43 @@
+#!/bin/bash
+
+# Check if no arguments are provided
+if [ $# -eq 0 ]; then
+  echo "Usage: $(basename $0) <hostname_or_ip> [ports]"
+  echo "Example: $(basename $0) 192.168.1.1 [optional_ports]"
+  exit 1
+fi
+
+HOST=$1
+shift # Shift the positional parameters to remove the hostname/ip from the list
+
+# If specific ports are provided, use them. Otherwise, use the entire range 1-65535.
+PORTS=${@:-$(seq 1 65535)}
+TOTAL_PORTS=$(echo $PORTS | wc -w)
+
+# Default sleep interval (in seconds)
+#SLEEP_INTERVAL=0.5
+
+# Initialize progress counter
+COUNTER=0
+
+# Loop through each port and test the connection
+for PORT in $PORTS; do
+  COUNTER=$((COUNTER + 1))
+  
+  # Display progress
+  echo -ne "Scanning port $PORT ($COUNTER/$TOTAL_PORTS)\r"
+  
+  # Use netcat to test the port
+  nc -zv -w 2 $HOST $PORT &> /dev/null
+  
+  # Check the exit status of netcat
+  if [ $? -eq 0 ]; then
+    echo "Port $PORT is open on $HOST"
+  fi
+  
+  # Sleep for the default interval
+  #sleep $SLEEP_INTERVAL
+done
+
+# Ensure the last progress line is cleared after completion
+echo -ne "\nScan completed.\n"

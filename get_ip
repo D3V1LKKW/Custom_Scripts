@@ -1,0 +1,35 @@
+#!/bin/bash
+
+# Function to display errors
+error() {
+  echo "$1" >&2
+  exit 1
+}
+
+# Check if a domain is provided as an argument
+if [ -z "$1" ]; then
+  error "Usage: $(basename $0) domain"
+fi
+
+# Get the domain from the command line argument
+domain=$1
+
+# Run the host command and capture the output
+output=$(host $domain 2>&1)
+
+# Check if the host command was successful
+if [ $? -ne 0 ]; then
+  error "Failed to resolve domain: $domain"
+fi
+
+# Extract the IP address from the output
+ip=$(echo "$output" | awk '/has address/ {print $NF}')
+
+# Check if an IP address was found
+if [ -z "$ip" ]; then
+  error "No IP address found for domain: $domain"
+fi
+
+# Output the IP address without a newline at the end
+printf "%s" "$ip"
+
