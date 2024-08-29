@@ -11,6 +11,10 @@ trap cleanup SIGINT
 
 # Initialize variables
 output_file=""
+hidden_dir=".scan_states"
+
+# Create the hidden directory if it doesn't exist
+mkdir -p "$hidden_dir"
 
 # Parse command line options
 while getopts ":o:" opt; do
@@ -42,45 +46,76 @@ fi
 HOST=$1
 shift # Shift the positional parameters to remove the hostname/ip from the list
 
+# Generate the resume file name based on the hostname, stored in the hidden directory
+resume_file="${hidden_dir}/${HOST}.state"
+
 # If specific ports are provided, use them. Otherwise, use the entire range 1-65535.
-PORTS=${@:-$(seq 1 65535)}
+if [ $# -gt 0 ]; then
+  # Specific ports are provided
+  PORTS="$@"
+  SAVE_RESUME=false
+else
+  # No specific ports provided, scan the full range
+  PORTS=$(seq 1 65535)
+  SAVE_RESUME=true
+fi
 
-# Count the total number of ports
-TOTAL_PORTS=$(echo "$PORTS" | tr ' ' '\n' | wc -l)
-
-# Default sleep interval (in seconds)
-SLEEP_INTERVAL=0.5
+# Calculate the total number of ports to be scanned initially
+TOTAL_PORTS=$(echo "$PORTS" | wc -w)
 
 # Initialize progress counter
 COUNTER=0
 
+# Check if a resume file exists and read the last processed port (only if resuming is enabled)
+if [ "$SAVE_RESUME" = true ] && [ -f "$resume_file" ]; then
+  LAST_PORT=$(cat "$resume_file")
+  PORTS=$(echo "$PORTS" | tr ' ' '\n' | awk -v last="$LAST_PORT" '$1 > last')
+fi
+
 # Define output stream if output_file is specified
 if [ -n "$output_file" ]; then
-  # Overwrite the file if it exists
-  exec > >(tee "$output_file") 2>&1
+  # Open the output file for writing
+  exec 3> "$output_file"  # File descriptor 3 for output file
 else
   # Default to terminal output
-  exec > /dev/tty 2>&1
+  exec 3>&1  # File descriptor 3 for terminal
 fi
 
 # Loop through each port and test the connection
 for PORT in $PORTS; do
   COUNTER=$((COUNTER + 1))
-  
-  # Display progress
-  printf "Scanning port %d (%d/%d)\r" "$PORT" "$COUNTER" "$TOTAL_PORTS"
+
+  # Display progress with correct format on terminal
+  printf "Scanning Port (%d/%d)\r" "$PORT" "$TOTAL_PORTS" >&2
   
   # Use netcat to test the port
   nc -zv -w 2 "$HOST" "$PORT" &> /dev/null
   
   # Check the exit status of netcat
   if [ $? -eq 0 ]; then
+    # Output the result in the required format
     echo "Port $PORT is open on $HOST"
+    echo "Port $PORT is open on $HOST" >&3
+  fi
+  
+  # Overwrite the resume file with the current port (only if resuming is enabled)
+  if [ "$SAVE_RESUME" = true ]; then
+    echo "$PORT" > "$resume_file"
   fi
   
   # Sleep for the default interval
-  sleep $SLEEP_INTERVAL
+  sleep 0.5
 done
 
+# Clean up the resume file if scan completed successfully (only if resuming is enabled)
+if [ "$SAVE_RESUME" = true ]; then
+  rm -f "$resume_file"
+fi
+
 # Ensure the last progress line is cleared after completion
-echo -ne "\nScan completed.\n"
+echo -ne "\nScan completed.\n" >&2
+
+# Close the output file descriptor if used
+if [ -n "$output_file" ]; then
+  exec 3>&-
+fi
