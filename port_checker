@@ -95,7 +95,9 @@ for PORT in $PORTS; do
   if [ $? -eq 0 ]; then
     # Output the result in the required format
     echo "Port $PORT is open on $HOST"
-    echo "Port $PORT is open on $HOST" >&3
+    if [ "$output_file" ]; then
+      echo "Port $PORT is open on $HOST" >&3
+    fi
   fi
   
   # Overwrite the resume file with the current port (only if resuming is enabled)
