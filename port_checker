@@ -74,8 +74,13 @@ fi
 
 # Define output stream if output_file is specified
 if [ -n "$output_file" ]; then
-  # Open the output file for writing
-  exec 3> "$output_file"  # File descriptor 3 for output file
+  if [ -f "$resume_file" ]; then
+    # Append to existing file if a resume file exists
+    exec 3>> "$output_file"  # Append mode
+  else
+    # Overwrite the file if no resume file exists
+    exec 3> "$output_file"  # Write mode
+  fi
 else
   # Default to terminal output
   exec 3>&1  # File descriptor 3 for terminal
@@ -96,7 +101,7 @@ for PORT in $PORTS; do
     # Output the result in the required format
     echo "Port $PORT is open on $HOST"
     if [ "$output_file" ]; then
-      echo "Port $PORT is open on $HOST" >&3
+        echo "Port $PORT is open on $HOST" >&3
     fi
   fi
   
